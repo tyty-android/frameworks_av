@@ -19,6 +19,7 @@
 
 #include <algorithm>
 
+#include <dlfcn.h>
 #include <fcntl.h>
 #include <sys/prctl.h>
 #include <sys/wait.h>
@@ -47,6 +48,24 @@ using android::media::audio::common::AudioMMapPolicy;
 using android::media::audio::common::AudioMMapPolicyInfo;
 using android::media::audio::common::AudioMMapPolicyType;
 
+void load_audiohalvendorextn() {
+    // Open the dll
+    void *autoHALVendorExtn = dlopen("libaudiohalvendorextn.so", RTLD_NODELETE | RTLD_NOW);
+    if (autoHALVendorExtn == nullptr) {
+        ALOGE("Failed to load library: libaudiohalvendorextn.so (%s)", dlerror());
+        return;
+    }
+
+    typedef void (*registerInterfaceFn)();
+    auto registerInterface = (registerInterfaceFn)dlsym(autoHALVendorExtn, "registerInterface");
+    if (registerInterface == nullptr) {
+        ALOGE("Failed to find symbol(registerInterface): error (%s)", dlerror());
+        return;
+    }
+
+    registerInterface();
+}
+
 int main(int argc __unused, char **argv __unused)
 {
     SLOGI("%s: starting", __func__);
@@ -64,6 +83,8 @@ int main(int argc __unused, char **argv __unused)
     // Ensure threads for possible callbacks.  Note that get_audio_flinger() does
     // this automatically when called from AudioPolicy, but we do this anyways here.
     ProcessState::self()->startThreadPool();
+
+    load_audiohalvendorextn();
 
     // Instantiating AudioFlinger (making it public, e.g. through ::initialize())
     // and then instantiating AudioPolicy (and making it public)
